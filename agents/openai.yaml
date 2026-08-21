@@ -1,0 +1,4 @@
+interface:
+  display_name: "MM Validation"
+  short_description: "Contest model validation protocol and skill orchestration"
+  default_prompt: "Use $mm-validation to validate my implemented mathematical-modeling competition model without inventing results."

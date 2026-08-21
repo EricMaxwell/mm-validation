@@ -7,6 +7,14 @@ description: Orchestrate evidence-bounded validation of implemented mathematical
 
 Act as the validation framework and orchestration layer for an already implemented mathematical-modeling competition solution. Define what must be checked, route method-level work to available specialist skills, bind claims to evidence, preserve provenance, and issue only an evidence-supported verdict.
 
+## Version and contract
+
+Current version: v1.1.
+
+v1.1 adds typed `observed`, `derived`, and `assumed` evidence; complete provenance and lifecycle checks; bidirectional claim-evidence and gate-evidence validation; derived-lineage and contradiction detection; evidence-derived conclusion stability; and deterministic `PASS`, `WARN`, or `FAIL` adjudication with a v1.0 compatibility bridge.
+
+Input is a v1.1 evidence manifest that identifies an already implemented model, inspectable artifact pointers, bounded claims, evidence and provenance records, the six validation gates, and material limitations. Output is a validation report and one evidence-supported framework verdict with reasons, failed checks, evidence summary, claim assessments, evidence paths, and explicit limitations. The control scripts validate declarations and decision rules only; they do not execute the model or calculate validation metrics.
+
 ## Boundary
 
 Own:

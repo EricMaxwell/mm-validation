@@ -126,6 +126,16 @@ def build_v1_0_manifest() -> dict:
 
 
 class ValidationFrameworkTests(unittest.TestCase):
+    def test_invalid_schema(self) -> None:
+        manifest = build_v1_1_manifest()
+        manifest["schema_version"] = "2.0"
+        report = validate_manifest_detailed(manifest)
+        self.assertFalse(report["valid"])
+        self.assertIn(
+            "UNSUPPORTED_SCHEMA_VERSION",
+            {item["code"] for item in report["errors"]},
+        )
+
     def test_missing_evidence(self) -> None:
         manifest = build_v1_1_manifest()
         manifest["claims"].append(
@@ -220,6 +230,100 @@ class ValidationFrameworkTests(unittest.TestCase):
         report = validate_manifest_detailed(manifest)
         self.assertTrue(report["valid"], report["errors"])
         self.assertEqual(adjudicate_v1_1(manifest, report)["verdict"], "PASS")
+
+    def test_cyclic_derived_evidence(self) -> None:
+        manifest = build_v1_1_manifest()
+        derived_items = [
+            {
+                "id": "E7",
+                "claim_id": "C1",
+                "type": "derived",
+                "source": "control://unit-test/E7",
+                "description": "First node in a control-only derivation cycle.",
+                "provenance": _provenance("E7"),
+                "confidence": "high",
+                "stance": "supports",
+                "gate_ids": ["conclusion_stability"],
+                "derived_from": ["E8"],
+                "lifecycle_status": "active",
+            },
+            {
+                "id": "E8",
+                "claim_id": "C1",
+                "type": "derived",
+                "source": "control://unit-test/E8",
+                "description": "Second node in a control-only derivation cycle.",
+                "provenance": _provenance("E8"),
+                "confidence": "high",
+                "stance": "supports",
+                "gate_ids": ["conclusion_stability"],
+                "derived_from": ["E7"],
+                "lifecycle_status": "active",
+            },
+        ]
+        manifest["evidence"].extend(derived_items)
+        manifest["claims"][0]["evidence_ids"].extend(["E7", "E8"])
+        manifest["gates"]["conclusion_stability"]["evidence_ids"].extend(
+            ["E7", "E8"]
+        )
+        report = validate_manifest_detailed(manifest)
+        self.assertIn(
+            "INVALID_DERIVATION_LINEAGE",
+            {item["code"] for item in report["errors"]},
+        )
+        self.assertEqual(adjudicate_v1_1(manifest, report)["verdict"], "FAIL")
+
+    def test_unsupported_core_claim(self) -> None:
+        manifest = build_v1_1_manifest()
+        neutral = {
+            "id": "E7",
+            "claim_id": "C2",
+            "type": "observed",
+            "source": "control://unit-test/E7",
+            "description": "Neutral control evidence that cannot support the claim.",
+            "provenance": _provenance("E7"),
+            "confidence": "high",
+            "stance": "neutral",
+            "gate_ids": ["conclusion_stability"],
+            "derived_from": [],
+            "lifecycle_status": "active",
+        }
+        manifest["claims"].append(
+            {
+                "id": "C2",
+                "statement": "Core control claim with no supporting evidence.",
+                "core": True,
+                "evidence_ids": ["E7"],
+                "requires_comparator": False,
+            }
+        )
+        manifest["evidence"].append(neutral)
+        conclusion = manifest["gates"]["conclusion_stability"]
+        conclusion["outcome"] = "fail"
+        conclusion["evidence_ids"].append("E7")
+        conclusion["issues"] = [
+            {
+                "severity": "high",
+                "message": "The second core control claim is unsupported.",
+                "evidence_ids": ["E7"],
+            }
+        ]
+        report = validate_manifest_detailed(manifest)
+        self.assertIn(
+            "UNSUPPORTED_CORE_CLAIM",
+            {item["code"] for item in report["errors"]},
+        )
+        self.assertEqual(adjudicate_v1_1(manifest, report)["verdict"], "FAIL")
+
+    def test_high_confidence_assumption_cannot_pass(self) -> None:
+        manifest = build_v1_1_manifest()
+        first = manifest["evidence"][0]
+        first["type"] = "assumed"
+        first["confidence"] = "high"
+        report = validate_manifest_detailed(manifest)
+        self.assertIn("UNSUPPORTED_GATE", {item["code"] for item in report["errors"]})
+        self.assertEqual(report["claim_assessments"]["C1"], "conditional")
+        self.assertEqual(adjudicate_v1_1(manifest, report)["verdict"], "FAIL")
 
     def test_assumption_dependency_warn(self) -> None:
         manifest = build_v1_1_manifest()

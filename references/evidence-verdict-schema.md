@@ -1,69 +1,96 @@
 # Evidence Manifest and Verdict Schema
 
-The manifest is a control record. It points to validation evidence; it does not replace raw outputs, logs, code, data, or human inspection.
+The manifest is a control record. It points to validation evidence; it does not replace raw outputs, logs, code, data, or human inspection. Schema v1.1 is the current format. Schema v1.0 remains accepted for backward compatibility.
 
-## Top-level shape
+## v1.1 top-level shape
 
 ```json
 {
-  "schema_version": "1.0",
-  "validation_id": "<stable run identifier>",
+  "schema_version": "1.1",
+  "validation_id": "<stable validation identifier>",
   "model": {
     "family": "prediction | regression | classification | optimization | ranking | simulation | hybrid",
     "name": "<implemented model name>",
-    "artifacts": ["<formula, code, config, data, or result path>"]
+    "artifacts": ["<inspectable formula, code, config, data, log, or result identifier>"]
   },
-  "claims": [
-    {
-      "id": "C1",
-      "statement": "<core competition claim>",
-      "stability": "stable | conditional | unstable | untested"
-    }
-  ],
+  "claims": [],
   "evidence": [],
   "gates": {},
   "limitations": [],
-  "declared_verdict": "pass | pass_with_limits | inconclusive | fail"
-}
-```
-
-`declared_verdict` is optional. When present, it must equal the deterministic adjudication result.
-
-## Evidence entries
-
-Every evidence entry has:
-
-```json
-{
-  "id": "E1",
-  "status": "observed | derived | reported | not_run | unavailable | not_applicable",
-  "description": "<what this item establishes>",
-  "artifact_path": null,
-  "command": null,
-  "run_id": null,
-  "source": null,
-  "derived_from": [],
-  "reason": null,
+  "declared_verdict": "PASS | WARN | FAIL",
   "metadata": {}
 }
 ```
 
-Rules by status:
+`declared_verdict` and `metadata` are optional. Unknown top-level fields are rejected. The declared verdict, when present, must match adjudication.
 
-- `observed`: an actual inspection or run occurred. Require `artifact_path`, or both `command` and `run_id`. The artifact should preserve the output, check record, or independently inspectable result.
-- `derived`: the item is reproducibly calculated from other evidence. Require nonempty `derived_from`; every dependency must eventually trace only to `observed` evidence.
-- `reported`: the item is asserted by the user, paper, or another record but not independently verified. Require `source`.
-- `not_run`: the check was planned but not executed. Require `reason`.
-- `unavailable`: a required input, tool, artifact, or authority was unavailable. Require `reason`.
-- `not_applicable`: the item genuinely does not apply. Require `reason`; do not use it to hide a missing check.
+## Claims and bidirectional mapping
 
-Evidence IDs are unique. Derived links must exist, cannot reference themselves, and cannot form cycles. `reported`, `not_run`, `unavailable`, and `not_applicable` evidence cannot support a passing gate.
+```json
+{
+  "id": "C1",
+  "statement": "<bounded, testable competition conclusion>",
+  "core": true,
+  "evidence_ids": ["E1"],
+  "requires_comparator": false
+}
+```
 
-The optional `metadata` object may hold units, versions, seeds, hashes, tested ranges, or structured result locations. It must not be used to bypass provenance requirements.
+Claim IDs are unique. `core` is required; `requires_comparator` is optional. Every referenced evidence ID must exist and its `claim_id` must point back to the same claim. Conversely, every evidence item must be listed by its named claim. The validator reports:
 
-## Gate records
+- `MISSING_CORE_EVIDENCE` when a core claim has no active evidence;
+- `UNSUPPORTED_CORE_CLAIM` when it has evidence but no support;
+- `ORPHAN_EVIDENCE` when evidence names no known claim or is not listed by that claim;
+- `CLAIM_EVIDENCE_MISMATCH` when the two mapping directions disagree.
 
-The manifest must contain exactly these six gate keys:
+Non-core missing or unsupported claims produce warnings. Core failures produce `FAIL`.
+
+## Evidence entries
+
+Every v1.1 evidence item requires at least `id`, `claim_id`, `type`, `source`, `description`, `provenance`, and `confidence`:
+
+```json
+{
+  "id": "E1",
+  "claim_id": "C1",
+  "type": "observed | derived | assumed",
+  "source": "<artifact, record, input, or authority identifier>",
+  "description": "<what exists and how it bears on the claim>",
+  "provenance": {
+    "origin": "<where the evidence came from>",
+    "generation_method": "<inspection, command, derivation, or assumption declaration>",
+    "timestamp": "<ISO 8601 timestamp with timezone>",
+    "responsible_party": "<person, team, or system>"
+  },
+  "confidence": "high | medium | low",
+  "stance": "supports | contradicts | neutral",
+  "gate_ids": ["implementation_correctness"],
+  "derived_from": [],
+  "lifecycle_status": "active | superseded | invalidated"
+}
+```
+
+When no responsible party applies, replace `responsible_party` with a nonempty `responsibility_not_applicable_reason`. Timestamps without a timezone are rejected. `stance` and a nonempty gate mapping are required. `lifecycle_status` defaults to `active` when omitted.
+
+Evidence types:
+
+- `observed`: a direct inspection, measurement, or executed check. Its source must identify the preserved record; the validator does not open or certify that record.
+- `derived`: a reproducible computation or logical derivation. It requires a nonempty, acyclic `derived_from` list whose IDs exist.
+- `assumed`: a human-declared premise, parameter condition, or scenario assumption. It is not observed support.
+
+A derived chain may include observed and assumed ancestors. It can support a passing gate only if its lineage is structurally valid and at least one ancestor is observed. An assumption-only chain is legal but warns and makes claim support conditional. This rule preserves real modeling workflows without allowing assumptions alone to establish a validated result.
+
+Lifecycle behavior:
+
+- `active` evidence participates in mappings, contradiction checks, claim assessments, and gate support;
+- `superseded` evidence remains for history but does not participate in current adjudication;
+- `invalidated` evidence remains auditable but cannot support or contradict the current claim.
+
+If active supporting and active contradicting evidence both map to one claim, the validator reports `EVIDENCE_CONTRADICTION`. A sole active contradiction also contradicts the claim. The framework detects declared semantic conflict; it does not infer contradictions from arbitrary prose or numeric artifacts.
+
+## Gates
+
+The manifest must contain exactly:
 
 - `implementation_correctness`
 - `baseline_comparison`
@@ -77,7 +104,7 @@ Each gate has:
 ```json
 {
   "outcome": "pass | pass_with_limits | inconclusive | fail | not_applicable",
-  "criterion": "<predeclared criterion and its source>",
+  "criterion": "<predeclared criterion and source>",
   "summary": "<evidence-bounded finding; no invented values>",
   "evidence_ids": ["E1"],
   "not_applicable_reason": null,
@@ -91,39 +118,57 @@ Each gate has:
 }
 ```
 
-Gate rules:
+Gate-to-evidence mappings are bidirectional. A `pass` or `pass_with_limits` gate requires active supporting observed evidence, or valid derived evidence with an observed ancestor, specifically mapped to that gate. Assumptions cannot independently satisfy this rule. A failed gate requires an issue; every issue must cite evidence. A limited pass requires an issue or material limitation.
 
-- A `pass` or `pass_with_limits` gate requires at least one supporting `observed` item or a `derived` item whose complete ancestry is observed.
-- `not_applicable` is allowed only for `baseline_comparison` and requires `not_applicable_reason`.
-- A failed gate requires at least one unresolved issue.
-- Keep only unresolved issues in `issues`; preserve resolved issues in the project’s normal event or history mechanism.
-- `implementation_correctness` is always applicable and is a hard gate.
-- The conclusion gate must agree with claim states: any `unstable` claim means `fail`; otherwise any `untested` claim means `inconclusive`; otherwise any `conditional` claim means `pass_with_limits`; otherwise all claims are `stable` and the gate is `pass`.
+Only `baseline_comparison` may be `not_applicable`, and it requires a reason. It produces `WARN` in v1.1 because no full comparison was executed. If any claim sets `requires_comparator=true`, the baseline cannot be not applicable.
+
+The conclusion gate is checked against core-claim assessments derived from evidence:
+
+- any core claim `contradicted` or `unsupported` -> gate `fail`;
+- otherwise any core claim `conditional` -> gate `pass_with_limits`;
+- otherwise -> gate `pass`.
+
+This is a one-way consistency rule. The declared gate outcome never changes the evidence-derived assessment.
 
 ## Limitations
-
-Each material limitation has:
 
 ```json
 {
   "id": "L1",
-  "description": "<tested boundary or remaining limitation>",
+  "description": "<tested boundary or remaining material limitation>",
   "affects_claims": ["C1"]
 }
 ```
 
-Claim IDs must exist. Empty limitations are valid when no material limit remains; never add decorative limitations.
+Limitation IDs are unique, affected claim IDs must exist, and the affected-claims list cannot be empty. Any material limitation produces `WARN` unless a harder rule already produces `FAIL`.
 
-## Verdict precedence
+## v1.1 verdict precedence and output
 
 Adjudicate without averaging:
 
-1. `fail` if any applicable gate failed, any unresolved issue is high severity, or any claim is unstable.
-2. Otherwise `inconclusive` if any applicable gate is inconclusive or any claim is untested.
-3. Otherwise `pass_with_limits` if any gate passed with limits, any claim is conditional, any unresolved medium/low issue remains, or any material limitation is recorded.
-4. Otherwise `pass`.
+1. `FAIL` if schema/provenance/mapping validation has any error, an applicable gate fails, or a high-severity issue remains.
+2. Otherwise `WARN` if any validator warning remains, a gate is not a full pass, a medium/low issue remains, or a material limitation exists.
+3. Otherwise `PASS`.
 
-A justified `baseline_comparison=not_applicable` does not automatically lower the verdict. The baseline gate was still covered: its applicability was explicitly adjudicated and documented.
+The adjudicator returns:
+
+```json
+{
+  "schema_version": "1.1",
+  "verdict": "PASS | WARN | FAIL",
+  "legacy_verdict": "pass | pass_with_limits | inconclusive | fail",
+  "reasons": [],
+  "failed_checks": [],
+  "evidence_summary": {},
+  "claim_assessments": {}
+}
+```
+
+`failed_checks` lists hard-rule codes. `evidence_summary` is descriptive metadata about the manifest, not a model-performance result. The legacy bridge is `inconclusive` when a v1.1 warning includes an inconclusive gate; other warnings map to `pass_with_limits`.
+
+## v1.0 compatibility
+
+Manifests with `schema_version: "1.0"` continue to use the original evidence statuses `observed`, `derived`, `reported`, `not_run`, `unavailable`, and `not_applicable`, original claim stability values, and lowercase verdicts `pass`, `pass_with_limits`, `inconclusive`, and `fail`. Their validation and CLI output remain on the v1.0 path. New manifests should use v1.1; the validator does not silently migrate records.
 
 ## Script behavior
 
@@ -132,4 +177,4 @@ python scripts/validate_evidence_manifest.py manifest.json
 python scripts/adjudicate_verdict.py manifest.json
 ```
 
-Pass `-` instead of a path to read JSON from standard input. The validator checks declared structure and provenance links, not whether an artifact’s scientific content is true. The adjudicator refuses an invalid manifest and reports a mismatch when `declared_verdict` conflicts with the hard rules.
+Pass `-` instead of a path to read JSON from standard input. Invalid JSON or a non-object root exits as a load error. The validator checks declared structure and control logic only. The scripts never calculate RMSE, VIF, Sobol indices, Pareto fronts, figures, or any other model result.

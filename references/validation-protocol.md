@@ -1,6 +1,6 @@
 # Contest-Grade Validation Protocol
 
-Use this protocol after a model has an executable or otherwise inspectable implementation. Validation is claim-centered: every check must challenge a stated competition conclusion, an implementation invariant, or a known failure mode.
+Use this protocol after a model has an executable or otherwise inspectable implementation. Validation is claim-centered: every check must challenge a stated competition conclusion, an implementation invariant, or a known failure mode. Schema v1.1 adds evidence provenance, lifecycle, claim binding, and deterministic `PASS` / `WARN` / `FAIL` adjudication; it does not execute the underlying statistical, machine-learning, optimization, or simulation method.
 
 ## 1. Intake and precommitment
 
@@ -15,6 +15,8 @@ Record before judging results:
 - acceptance criteria and their source;
 - comparison budget, constraints, information set, data split, and random-seed policy;
 - time or compute limits that constrain validation.
+
+Give every core claim a stable ID and mark it `core=true`. Predeclare whether a claim depends on comparison with a baseline. Evidence may be attached only after its source, generation method, timestamp, and responsible party are known; absence of that information is a validation failure, not an invitation to reconstruct a plausible record.
 
 If an acceptance threshold lacks a problem, domain, policy, or user source, do not manufacture one. Report the observed value and mark the judgment criterion as unavailable.
 
@@ -95,24 +97,38 @@ Choose applicable challenges:
 
 Track both performance and the actual decision. Record failed runs, infeasible cases, switching points, and regions not tested. “No failure observed in the tested domain” is acceptable; “universally robust” is not.
 
-## 7. Conclusion stability
+## 7. Evidence lifecycle and claim binding
 
-Map every core claim to the evidence capable of changing it. Classify each claim:
+Record evidence through the following lifecycle:
 
-- `stable`: the claim remains supported over its declared validation domain;
-- `conditional`: it holds only under explicitly recorded conditions or material limits;
-- `unstable`: an executed validation contradicts or reverses it;
-- `untested`: required evidence is missing or not reproducible.
+1. Create the evidence item after an observation, derivation, or explicit assumption exists. Do not create placeholder results.
+2. Bind the evidence to exactly one claim with `claim_id`, and list the evidence ID from that claim.
+3. Bind the evidence to every gate for which it is used, in both the evidence and gate records.
+4. Record whether it `supports`, `contradicts`, or is `neutral` toward the claim.
+5. Keep it `active` while it participates in adjudication. Mark replaced evidence `superseded`, or evidence shown invalid `invalidated`; retain both for traceability.
+6. Revalidate the complete manifest whenever a claim, evidence item, gate, limitation, or lifecycle state changes.
+
+An `observed` item records a direct inspection or executed result. A `derived` item names all upstream evidence IDs and records its reproducible generation method. An `assumed` item records an input premise or scenario condition. A derived chain may include assumptions, but it supports a passing gate only when it has an observed ancestor; assumption-only support is conditional. Active evidence that supports and contradicts the same claim is an unresolved contradiction and must not be averaged away.
+
+## 8. Conclusion stability
+
+Map every core claim to the evidence capable of changing it. In schema v1.1, derive the assessment from active evidence rather than declaring it independently:
+
+- `supported`: active, observed-supported evidence supports the claim without active contradiction;
+- `conditional`: support depends on assumptions, non-observed ancestry, or low-confidence evidence;
+- `contradicted`: active evidence contradicts the claim, including unresolved support-versus-contradiction conflicts;
+- `unsupported`: no active supporting evidence is present.
 
 Test the conclusion actually used in the paper or recommendation, not only a surrogate metric. Relevant decision changes include sign reversal, material error increase, loss of feasibility, selected-solution switching, Top-k or rank reversal, threshold reclassification, policy change, or failure of an asserted mechanism.
 
-## 8. Verdict and stopping
+The `conclusion_stability` gate is derived from core-claim assessments: contradicted or unsupported means `fail`; conditional means `pass_with_limits`; otherwise it is `pass`. This one-way derivation prevents a declared gate outcome from manufacturing claim stability.
+
+## 9. Verdict and stopping
 
 Apply `evidence-verdict-schema.md` and the adjudication script. Do not average across gates.
 
-- Stop and return `fail` when implementation correctness fails or executed evidence invalidates a core claim.
-- Return `inconclusive` when required evidence is missing, unavailable, unsupported by provenance, or not reproducible.
-- Return `pass_with_limits` when all required gates are supported but a claim is conditional or a material limitation remains.
-- Return `pass` only when all applicable gates and core claims are supported without unresolved material limits.
+- Return `FAIL` when schema/provenance/mapping validation fails, an applicable gate fails, a high-severity issue remains, a core claim is unsupported, or active evidence contradicts a core claim.
+- Return `WARN` when hard checks pass but assumptions, low confidence, non-core evidence gaps, a non-full-pass gate, a medium/low issue, or a material limitation remains.
+- Return `PASS` only when all applicable gates fully pass, all core claims have active observed-supported evidence, provenance is complete, no contradiction remains, and no warning condition is present.
 
-After a fail or inconclusive result, recommend the smallest next action that can resolve the blocking evidence gap. Do not silently broaden scope or compute budget.
+The v1.1 engine also emits a lowercase `legacy_verdict` bridge for consumers that still use the four v1.0 states. After `FAIL` or `WARN`, recommend the smallest next action that can resolve the blocking failure or limitation. Do not silently broaden scope or compute budget.

@@ -1,118 +1,35 @@
-\# mm-validation
+# mm-validation
 
+Evidence-bounded validation framework for mathematical-modeling competition workflows.
 
+## Status
 
-Evidence-based validation framework for mathematical modeling workflows.
+Current version: v1.1.
 
+v1.1 provides:
 
+- structured observed, derived, and assumed evidence;
+- complete provenance and evidence lifecycle checks;
+- bidirectional claim-evidence and gate-evidence mapping;
+- contradiction and conclusion-stability checks;
+- deterministic `PASS` / `WARN` / `FAIL` adjudication with reasons, failed checks, and evidence summary;
+- schema v1.0 compatibility.
 
-\## Status
+## Scope
 
+mm-validation owns validation protocol, evidence provenance, claim verification, conclusion stability, specialist-skill orchestration, and verdict generation. It does not select or implement models, analyze source data, train models, calculate validation metrics, generate figures, or replace `mathmodel-skill` Stage 5.
 
+## Commands
 
-Current version:
+```text
+python scripts/validate_evidence_manifest.py manifest.json
+python scripts/adjudicate_verdict.py manifest.json
+python -m unittest discover -s tests -p "test_*.py" -v
+```
 
+The scripts validate JSON declarations and hard decision rules. They never generate model evidence or certify that referenced scientific results are true.
 
-
-v1.0.0-architecture
-
-
-
-This release represents the initial architecture baseline.
-
-
-
-It provides:
-
-
-
-\- evidence manifest management
-
-\- validation protocol structure
-
-\- professional skill routing
-
-\- claim stability assessment
-
-\- validation verdict framework
-
-
-
-\## Scope
-
-
-
-mm-validation is responsible for:
-
-
-
-\- evidence provenance
-
-\- validation orchestration
-
-\- conclusion stability checking
-
-\- verdict adjudication
-
-
-
-It does NOT:
-
-
-
-\- select models
-
-\- train models
-
-\- replace mathematical modeling implementation workflow
-
-
-
-Implementation and modeling stages remain managed by mathmodel-skill.
-
-
-
-\## Current Limitations
-
-
-
-The current v1.0 architecture has known limitations:
-
-
-
-\- evidence-to-claim binding needs strengthening
-
-\- automated pass conditions require stricter constraints
-
-\- provenance schema requires refinement
-
-\- forward validation tests are being expanded
-
-
-
-\## Roadmap
-
-
-
-\### v1.1 Hardening
-
-
-
-Planned improvements:
-
-
-
-\- structured evidence schema
-
-\- claim-evidence binding
-
-\- stronger provenance tracking
-
-\- gate-specific evidence validation
-
-\- stricter verdict adjudication
-
-\- forward test fixtures
+See `references/evidence-verdict-schema.md` for the v1.1 input and output contract and the v1.0 compatibility policy.
 
 
 
